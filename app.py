@@ -5,28 +5,24 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import joblib
 
-# Load Models with Exception Handling
+# Load Models and Encoders
 @st.cache_resource
 def load_models():
     models = {}
+    encoders = {}
     try:
         models["XGBoost"] = joblib.load("xgboost_model.pkl")
-    except:
-        st.warning("⚠ XGBoost Model Not Found!")
-    
-    try:
         models["Random Forest"] = joblib.load("random_forest_model.pkl")
-    except:
-        st.warning("⚠ Random Forest Model Not Found!")
-    
-    try:
         models["Hybrid Model"] = joblib.load("hybrid_model.pkl")
-    except:
-        st.warning("⚠ Hybrid Model Not Found!")
-    
-    return models
+        encoders["scaler"] = joblib.load("scaler.pkl")
+        encoders["label_encoders"] = joblib.load("label_encoders.pkl")
+        encoders["target_encoder"] = joblib.load("target_encoder.pkl")
+    except FileNotFoundError as e:
+        st.error(f"⚠ Model or encoder file not found: {e}")
+        return None, None
+    return models, encoders
 
-models = load_models()
+models, encoders = load_models()
 
 # Load Dataset
 @st.cache_data
@@ -38,7 +34,7 @@ def load_data():
 df = load_data()
 
 st.title("📊 AI-Powered Job Market Insights")
-st.write("Explore job trends, salaries, and AI adoption levels using ML models.")
+st.write("Explore job trends, salaries, and predict job growth using ML models.")
 
 # Data Preview
 if st.checkbox("🔍 Show Dataset"):
@@ -59,34 +55,48 @@ plt.xticks(rotation=45)
 st.pyplot(fig)
 
 # ML Model Predictions
-st.subheader("🔮 AI Job Market Predictions")
-st.write("Select inputs to predict AI Skill Rankings:")
+st.subheader("🔮 Job Growth Predictions")
+st.write("Select inputs to predict job growth potential:")
 
 # User Inputs
 industry = st.selectbox("🏢 Industry", df["Industry"].unique())
-income_group = st.selectbox("💰 Company Size", df["Company_Size"].unique())
+company_size = st.selectbox("💰 Company Size", df["Company_Size"].unique())
 skill = st.selectbox("🛠 Required Skills", df["Required_Skills"].unique())
 salary = st.number_input("💵 Salary (USD)", min_value=30000, max_value=300000, step=5000)
 
-if st.button("🔍 Predict AI Job Market Insights"):
-    input_features = np.array([[industry, income_group, skill, salary]])
-    input_features = input_features.astype(float)
-    
-    # Predictions
-    try:
-        rf_prediction = models["Random Forest"].predict(input_features)[0]
-        st.success(f"🌟 Random Forest Prediction: {rf_prediction:.2f}")
-    except:
-        st.error("⚠ Random Forest Model Not Loaded")
-    
-    try:
-        xgb_prediction = models["XGBoost"].predict(input_features)[0]
-        st.success(f"🔥 XGBoost Prediction: {xgb_prediction:.2f}")
-    except:
-        st.error("⚠ XGBoost Model Not Loaded")
-    
-    try:
-        hybrid_prediction = models["Hybrid Model"].predict(input_features)[0]
-        st.success(f"🔮 Hybrid Model Prediction: {hybrid_prediction:.2f}")
-    except:
-        st.error("⚠ Hybrid Model Not Loaded")
+if st.button("🔍 Predict Job Growth"):
+    if models and encoders:
+        # Prepare input
+        input_dict = {
+            "Industry": industry,
+            "Company_Size": company_size,
+            "Required_Skills": skill,
+            "Salary_USD": salary
+        }
+        input_df = pd.DataFrame([input_dict])
+        
+        # Encode categorical inputs
+        for col in ["Industry", "Company_Size", "Required_Skills"]:
+            input_df[col] = encoders["label_encoders"][col].transform([input_df[col][0]])
+        
+        # Scale numerical input
+        input_df["Salary_USD"] = encoders["scaler"].transform(input_df[["Salary_USD"]])
+        
+        # Predict
+        rf_pred = models["Random Forest"].predict(input_df)[0]
+        xgb_pred = models["XGBoost"].predict(input_df)[0]
+        hybrid_pred = models["Hybrid Model"].predict(input_df)[0]
+        
+        # Decode predictions
+        rf_pred_decoded = encoders["target_encoder"].inverse_transform([int(rf_pred)])[0]
+        xgb_pred_decoded = encoders["target_encoder"].inverse_transform([int(xgb_pred)])[0]
+        hybrid_pred_decoded = encoders["target_encoder"].inverse_transform([int(hybrid_pred)])[0]
+        
+        st.success(f"🌟 Random Forest Prediction: {rf_pred_decoded}")
+        st.success(f"🔥 XGBoost Prediction: {xgb_pred_decoded}")
+        st.success(f"🔮 Hybrid Model Prediction: {hybrid_pred_decoded}")
+    else:
+        st.error("⚠ Models or encoders not loaded. Check if files are uploaded.")
+
+st.sidebar.header("About")
+st.sidebar.write("Built with Random Forest, XGBoost, and a hybrid model to predict job growth trends in the AI job market.")
