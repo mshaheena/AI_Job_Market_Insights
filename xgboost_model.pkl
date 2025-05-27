@@ -1,0 +1,2 @@
+# After training the model
+joblib.dump(xgb_model, "xgboost_model.pkl")

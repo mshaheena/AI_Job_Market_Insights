@@ -1,0 +1,2 @@
+# After encoding categorical variables
+joblib.dump(label_encoders, "label_encoders.pkl")
